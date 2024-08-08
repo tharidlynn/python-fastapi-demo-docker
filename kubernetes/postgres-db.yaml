@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: db # This value must match the service name 'db' in postgresql://bookdbadmin:dbpassword@db:5432/bookstore
+  namespace: diraht
+spec:
+  ports:
+    - port: 5432
+  clusterIP: None
+  selector:
+    app: fastapi-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fastapi-postgres
+  namespace: diraht
+spec:
+  serviceName: "db"
+  selector:
+    matchLabels:
+      app: fastapi-postgres
+  template:
+    metadata:
+      labels:
+        app: fastapi-postgres
+    spec:
+      containers:
+        - name: db
+          image: postgres:13
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: fastapi-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fastapi-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: fastapi-secret
+                  key: POSTGRES_DB
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgres-data
+            - mountPath: /docker-entrypoint-initdb.d
+              name: db-init-script
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "100Mi"
+            limits:
+              cpu: "500m"
+              memory: "500Mi"
+      volumes:
+        - configMap:
+            items:
+              - key: init.sh
+                path: init.sh
+            name: db-init-script
+          name: db-init-script
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: diraht
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
